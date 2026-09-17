@@ -4,7 +4,7 @@
 
 <h1 align="center">Mocha AE → Nuke</h1>
 
-<p align="center">Copy tracking from After Effects. Paste a single node into Nuke.</p>
+<p align="center">Export tracking from After Effects as a single Nuke node.</p>
 
 <p align="center">
   <a href="https://github.com/tardis7732/mocha-ae-to-nuke/tree/v1.0"><img src="https://img.shields.io/badge/version-1.0-526DDB" alt="Version 1.0"></a>
@@ -20,7 +20,7 @@
   <img src="images/english.jpg" alt="English interface — Mocha AE to Nuke v1.0" width="607">
 </p>
 
-Export Mocha tracking applied in AE as **CornerPin2D** or **Transform**. Reference-frame correction is included in one node, with a single **Copy to clipboard** button. No `.nk` save step.
+Export Mocha tracking applied in AE as **CornerPin2D** or **Transform**. Reference-frame correction is included in one node. Use **Copy to clipboard** or **Save .nk file**, side by side in the same dialog.
 
 ## Quick start
 
@@ -28,7 +28,7 @@ Export Mocha tracking applied in AE as **CornerPin2D** or **Transform**. Referen
 2. In AE, enable **Preferences → Scripting & Expressions → Allow Scripts to Write Files and Access Network**.
 3. Track in Mocha AE, save, and return to AE. Use **Create Track Data**, select the tracked layer, then **Apply Export** with **Corner Pin** or **Transform**.
 4. Select the layer receiving the keyframes. Open **File → Scripts → Run Script File…** and run [`Mocha_AE_to_Nuke_EN.jsx`](Mocha_AE_to_Nuke_EN.jsx).
-5. Choose the node type, frame range and reference frame. Click **Copy to clipboard**, then press **Ctrl+V** in the Nuke node graph.
+5. Choose the node type, frame range and reference frame. Click **Copy to clipboard**, then press **Ctrl+V** in the Nuke node graph. Or click **Save .nk file** and choose a location; import the saved file into Nuke with **File → Import Script**. Both options export the same node data.
 
 ## Settings
 
@@ -40,7 +40,7 @@ Export Mocha tracking applied in AE as **CornerPin2D** or **Transform**. Referen
 | **Mocha coordinates** | Uses the exported corner coordinates directly. Suitable for tracking received on a Null. |
 | **Include layer transform** | Also applies the receiving AE layer's position, rotation and scale to the corners. |
 
-Check the reference frame before copying. Match the Nuke input resolution and pixel aspect ratio to the AE composition, and position the input for that reference frame before applying the exported node.
+Check the reference frame before exporting. Match the Nuke input resolution and pixel aspect ratio to the AE composition, and position the input for that reference frame before applying the exported node.
 
 ## Included files
 
@@ -56,6 +56,5 @@ Check the reference frame before copying. Match the Nuke input resolution and pi
 - Keys are sampled at integer frames with linear interpolation. AE subframe motion and motion-blur rendering are not reproduced.
 - Clipboard copying uses the Windows command shell, PowerShell and temporary text files. Enable the AE scripting permission above. Temporary data is checked before copying and removed afterward; a second process verifies the copied text. Completion is checked through a result file. No installer or network requests.
 - If copying fails, check the message in the dialog. File access errors, empty data and verification failures are reported instead of success.
-- Screenshots show the actual AE dialog with a sample layer. Numerical and PowerShell transport tests passed with a mock clipboard. The complete AE-to-Nuke paste and render workflow has not been verified.
 
 </details>

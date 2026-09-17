@@ -260,6 +260,24 @@ var MochaNukeBridge = (function () {
             }
         }
     }
+    function saveNK(text) {
+        var file = File.saveDialog('Nuke 파일로 저장', 'Nuke script:*.nk');
+        if (!file) return null;
+        if (!/\.nk$/i.test(file.name)) {
+            file = new File(file.fsName + '.nk');
+            if (file.exists && !confirm('같은 이름의 파일이 있습니다. 덮어쓸까요?\n' + file.fsName)) return null;
+        }
+        try {
+            file.encoding = 'UTF-8'; file.lineFeed = 'Unix';
+            if (!file.open('w')) throw new Error('파일을 쓸 수 없습니다: ' + file.error);
+            var written = file.write(text), closed = file.close();
+            if (!written || !closed) throw new Error('파일 저장에 실패했습니다: ' + file.error);
+            if (!file.open('r')) throw new Error('저장한 파일을 확인할 수 없습니다: ' + file.error);
+            var actual = file.read(); file.close();
+            if (actual !== text) throw new Error('저장한 파일의 내용이 원본과 다릅니다.');
+            return file.fsName;
+        } finally { try { file.close(); } catch (ignored) {} }
+    }
     function run() {
         try {
             var comp = app.project ? app.project.activeItem : null;
@@ -323,19 +341,20 @@ var MochaNukeBridge = (function () {
                 updateModeHelp();
             };
             cornerSpaceList.onChange = updateModeHelp;
-            var copyPanel = panel('복사');
+            var copyPanel = panel('내보내기');
             var pasteHelp = copyPanel.add('statictext', undefined,
-                '복사 전에 레퍼런스 프레임이 원하는 기준 시점인지 확인하세요.\n입력 이미지의 해상도는 AE 컴포지션과 맞춰 주세요.', {multiline: true});
+                '내보내기 전에 레퍼런스 프레임이 원하는 기준 시점인지 확인하세요.\n입력 이미지의 해상도는 AE 컴포지션과 맞춰 주세요.', {multiline: true});
             pasteHelp.preferredSize = [540, 38];
-            var status = copyPanel.add('statictext', undefined, clipboardPermissionMessage() || '준비 완료 · 복사 후 Nuke 노드 그래프에서 Ctrl+V 하세요.', {multiline: true});
+            var status = copyPanel.add('statictext', undefined, clipboardPermissionMessage() || '준비 완료 · 클립보드로 복사하거나 .nk 파일로 저장하세요.', {multiline: true});
             status.preferredSize = [540, 64];
             var buttons = copyPanel.add('group'); buttons.alignment = 'right';
             var exportButton = buttons.add('button', undefined, '클립보드로 복사');
+            var saveButton = buttons.add('button', undefined, '.nk 파일로 저장');
             win.defaultElement = exportButton;
-            exportButton.onClick = function () {
-                exportButton.enabled = false;
+            function exportTracking(toFile) {
+                exportButton.enabled = false; saveButton.enabled = false;
                 try {
-                    status.text = '트래킹 데이터를 복사하는 중입니다…';
+                    status.text = '트래킹 데이터를 준비하는 중입니다…';
                     win.update();
                     var opts = {aeFirst: integer(firstBox.text, 'AE start'), aeLast: integer(lastBox.text, 'AE end'),
                         type: typeList.selection.index === 1 ? 'transform' : 'cornerpin',
@@ -344,20 +363,29 @@ var MochaNukeBridge = (function () {
                         refFrame: integer(refBox.text, '레퍼런스 프레임')};
                     if (opts.type === 'cornerpin' && !effects.length) throw new Error('Mocha AE에서 Corner Pin > Apply Export를 먼저 실행하세요.');
                     var data = collect(layer, effects[effectList.selection.index], comp, opts);
-                    copyClipboard(makeNK(data), function (done, total) {
-                        status.text = '클립보드로 전달 중… ' + Math.round(done / total * 100) + '%';
-                    });
-                    status.text = '복사 완료 · Nuke ' + data.first + '–' + (data.first + data.samples.length - 1) + '프레임 · 노드 1개';
-                    status.text += '\n레퍼런스: AE ' + opts.refFrame + ' → Nuke ' + (data.first + data.refIndex) + '\nNuke 노드 그래프에서 Ctrl+V 하세요.';
-                } catch (e) { status.text = '복사 실패: ' + (e.message || e.toString()); }
-                finally { exportButton.enabled = true; }
-            };
+                    var text = makeNK(data), savedPath = null;
+                    if (toFile) {
+                        savedPath = saveNK(text);
+                        if (!savedPath) { status.text = '저장을 취소했습니다.'; return; }
+                    } else {
+                        copyClipboard(text, function (done, total) {
+                            status.text = '클립보드로 전달 중… ' + Math.round(done / total * 100) + '%';
+                        });
+                    }
+                    status.text = (toFile ? '저장 완료 · Nuke ' : '복사 완료 · Nuke ') + data.first + '–' + (data.first + data.samples.length - 1) + '프레임 · 노드 1개';
+                    status.text += '\n레퍼런스: AE ' + opts.refFrame + ' → Nuke ' + (data.first + data.refIndex);
+                    status.text += toFile ? '\n' + savedPath : '\nNuke 노드 그래프에서 Ctrl+V 하세요.';
+                } catch (e) { status.text = (toFile ? '저장 실패: ' : '복사 실패: ') + (e.message || e.toString()); }
+                finally { exportButton.enabled = true; saveButton.enabled = true; }
+            }
+            exportButton.onClick = function () { exportTracking(false); };
+            saveButton.onClick = function () { exportTracking(true); };
             typeList.onChange();
             win.center(); win.show();
         } catch (e) { alert('Mocha → Nuke\n' + e.toString()); }
     }
     return {run: run, collect: collect, makeNK: makeNK, sample: sample, transformPoint: transformPoint,
-        findPins: findPins, encodeUTF16: encodeUTF16, copyClipboard: copyClipboard,
+        findPins: findPins, encodeUTF16: encodeUTF16, copyClipboard: copyClipboard, saveNK: saveNK,
         relativeTransforms: relativeTransforms};
 }());
 if (!$.global.MOCHA_NUKE_LIBRARY_ONLY) MochaNukeBridge.run();

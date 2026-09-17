@@ -260,6 +260,24 @@ var MochaNukeBridge = (function () {
             }
         }
     }
+    function saveNK(text) {
+        var file = File.saveDialog('Save Nuke file', 'Nuke script:*.nk');
+        if (!file) return null;
+        if (!/\.nk$/i.test(file.name)) {
+            file = new File(file.fsName + '.nk');
+            if (file.exists && !confirm('A file with this name exists. Overwrite it?\n' + file.fsName)) return null;
+        }
+        try {
+            file.encoding = 'UTF-8'; file.lineFeed = 'Unix';
+            if (!file.open('w')) throw new Error('Cannot write file: ' + file.error);
+            var written = file.write(text), closed = file.close();
+            if (!written || !closed) throw new Error('Failed to save file: ' + file.error);
+            if (!file.open('r')) throw new Error('Cannot verify saved file: ' + file.error);
+            var actual = file.read(); file.close();
+            if (actual !== text) throw new Error('Saved file contents differ from the original.');
+            return file.fsName;
+        } finally { try { file.close(); } catch (ignored) {} }
+    }
     function run() {
         try {
             var comp = app.project ? app.project.activeItem : null;
@@ -323,17 +341,18 @@ var MochaNukeBridge = (function () {
                 updateModeHelp();
             };
             cornerSpaceList.onChange = updateModeHelp;
-            var copyPanel = panel('Copy');
+            var copyPanel = panel('Export');
             var pasteHelp = copyPanel.add('statictext', undefined,
-                'Before copying, check that the reference frame is the one you intended.\nMatch the input image resolution to the AE composition.', {multiline: true});
+                'Before exporting, check that the reference frame is the one you intended.\nMatch the input image resolution to the AE composition.', {multiline: true});
             pasteHelp.preferredSize = [540, 38];
-            var status = copyPanel.add('statictext', undefined, clipboardPermissionMessage() || 'Ready · After copying, press Ctrl+V in the Nuke node graph.', {multiline: true});
+            var status = copyPanel.add('statictext', undefined, clipboardPermissionMessage() || 'Ready · Copy to clipboard or save an .nk file.', {multiline: true});
             status.preferredSize = [540, 64];
             var buttons = copyPanel.add('group'); buttons.alignment = 'right';
             var exportButton = buttons.add('button', undefined, 'Copy to clipboard');
+            var saveButton = buttons.add('button', undefined, 'Save .nk file');
             win.defaultElement = exportButton;
-            exportButton.onClick = function () {
-                exportButton.enabled = false;
+            function exportTracking(toFile) {
+                exportButton.enabled = false; saveButton.enabled = false;
                 try {
                     status.text = 'Preparing tracking data…';
                     win.update();
@@ -344,20 +363,29 @@ var MochaNukeBridge = (function () {
                         refFrame: integer(refBox.text, 'Reference frame')};
                     if (opts.type === 'cornerpin' && !effects.length) throw new Error('First apply Corner Pin tracking data using Apply Export in Mocha AE.');
                     var data = collect(layer, effects[effectList.selection.index], comp, opts);
-                    copyClipboard(makeNK(data), function (done, total) {
-                        status.text = 'Copying to clipboard… ' + Math.round(done / total * 100) + '%';
-                    });
-                    status.text = 'Copied · Nuke ' + data.first + '–' + (data.first + data.samples.length - 1) + ' frames · 1 node';
-                    status.text += '\nReference: AE ' + opts.refFrame + ' → Nuke ' + (data.first + data.refIndex) + '\nPress Ctrl+V in the Nuke node graph.';
-                } catch (e) { status.text = 'Copy failed: ' + (e.message || e.toString()); }
-                finally { exportButton.enabled = true; }
-            };
+                    var text = makeNK(data), savedPath = null;
+                    if (toFile) {
+                        savedPath = saveNK(text);
+                        if (!savedPath) { status.text = 'Save cancelled.'; return; }
+                    } else {
+                        copyClipboard(text, function (done, total) {
+                            status.text = 'Copying to clipboard… ' + Math.round(done / total * 100) + '%';
+                        });
+                    }
+                    status.text = (toFile ? 'Saved · Nuke ' : 'Copied · Nuke ') + data.first + '–' + (data.first + data.samples.length - 1) + ' frames · 1 node';
+                    status.text += '\nReference: AE ' + opts.refFrame + ' → Nuke ' + (data.first + data.refIndex);
+                    status.text += toFile ? '\n' + savedPath : '\nPress Ctrl+V in the Nuke node graph.';
+                } catch (e) { status.text = (toFile ? 'Save failed: ' : 'Copy failed: ') + (e.message || e.toString()); }
+                finally { exportButton.enabled = true; saveButton.enabled = true; }
+            }
+            exportButton.onClick = function () { exportTracking(false); };
+            saveButton.onClick = function () { exportTracking(true); };
             typeList.onChange();
             win.center(); win.show();
         } catch (e) { alert('Mocha → Nuke\n' + e.toString()); }
     }
     return {run: run, collect: collect, makeNK: makeNK, sample: sample, transformPoint: transformPoint,
-        findPins: findPins, encodeUTF16: encodeUTF16, copyClipboard: copyClipboard,
+        findPins: findPins, encodeUTF16: encodeUTF16, copyClipboard: copyClipboard, saveNK: saveNK,
         relativeTransforms: relativeTransforms};
 }());
 if (!$.global.MOCHA_NUKE_LIBRARY_ONLY) MochaNukeBridge.run();
