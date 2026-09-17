@@ -190,10 +190,28 @@ var MochaNukeBridge = (function () {
         var token = new Date().getTime() + '_' + Math.floor(Math.random() * 1000000000);
         var payload = new File(Folder.temp.fsName + '/MochaNuke_' + token + '.txt');
         if (payload.exists) throw new Error('임시 파일 이름이 겹쳤습니다. 다시 복사하세요.');
+        var temporaryFiles = [payload];
         var encoded = encodeUTF16(text), bytes = text.length * 2;
         function psString(value) { return "'" + String(value).replace(/'/g, "''") + "'"; }
+        function temporaryFile(suffix) {
+            var file = new File(Folder.temp.fsName + '/MochaNuke_' + token + suffix);
+            if (file.exists) throw new Error('임시 파일 이름이 겹쳤습니다. 다시 복사하세요.');
+            temporaryFiles.push(file);
+            return file;
+        }
+        function writeChecked(file, value) {
+            file.encoding = 'UTF-8';
+            if (!file.open('w')) throw new Error('임시 데이터를 쓸 수 없습니다: ' + file.error);
+            var written = file.write(value), closed = file.close();
+            if (!written || !closed) throw new Error('임시 데이터 쓰기에 실패했습니다.');
+            if (!file.open('r')) throw new Error('임시 데이터를 다시 읽을 수 없습니다.');
+            var actual = file.read(); file.close();
+            if (actual !== value) throw new Error('임시 데이터가 원본과 다릅니다. 복사를 중단했습니다.');
+        }
         function request(stage) {
             var expected = 'MOCHA_' + stage + ':' + token + ':' + bytes;
+            var worker = temporaryFile('_' + stage + '.worker.txt');
+            var result = temporaryFile('_' + stage + '.result.txt');
             // Base64 keeps the payload independent of AE's text encoding and newline conversion.
             // Validate the original byte count before touching the clipboard. Use a fresh process for VERIFY.
             var code = "$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'; try {" +
@@ -210,28 +228,36 @@ var MochaNukeBridge = (function () {
                 'if([String]::Equals($got,$value,[StringComparison]::Ordinal)){$matched=$true;break}} catch {};' +
                 'Start-Sleep -Milliseconds 50};' +
                 "if(-not $matched){throw 'Clipboard content does not match tracking data.'};" +
-                '[Console]::WriteLine(' + psString(expected) + ');' +
-                "} catch {[Console]::WriteLine('ERROR: '+$_.Exception.Message);exit 1}";
-            var reply = system.callSystem('"' + powershell.fsName + '" -NoLogo -NoProfile -NonInteractive -STA -WindowStyle Hidden -EncodedCommand ' + encodeUTF16(code));
-            reply = String(reply).replace(/^\s+|\s+$/g, '');
-            if (reply !== expected) throw new Error('클립보드 ' + stage + ': ' + (reply || 'Windows 복사 명령의 응답이 없습니다.'));
+                '$reply=' + psString(expected) + ';' +
+                "} catch {$reply='ERROR: '+$_.Exception.Message};" +
+                '[IO.File]::WriteAllText(' + psString(result.fsName) + ',$reply,[Text.Encoding]::UTF8);';
+            writeChecked(worker, code);
+            // AE may return empty stdout for PowerShell. Keep the command short, run through
+            // cmd.exe, and require a fresh, stage-specific result file rather than stdout.
+            var loader = '& ([ScriptBlock]::Create([IO.File]::ReadAllText(' + psString(worker.fsName) + ')))';
+            var command = 'cmd.exe /d /s /c ""' + powershell.fsName + '" -NoLogo -NoProfile -NonInteractive -STA -WindowStyle Hidden -EncodedCommand ' + encodeUTF16(loader) + ' 2>&1"';
+            var output = system.callSystem(command), reply = '';
+            if (result.exists) {
+                result.encoding = 'UTF-8';
+                if (!result.open('r')) throw new Error('임시 데이터를 다시 읽을 수 없습니다.');
+                reply = result.read(); result.close();
+            }
+            reply = String(reply).replace(/^[\s\uFEFF]+|[\s\uFEFF]+$/g, '');
+            // Console output is diagnostic only: it cannot establish successful copying.
+            if (reply !== expected) throw new Error('클립보드 ' + stage + ': ' + (reply || String(output || '').replace(/^\s+|\s+$/g, '') || 'Windows 복사 명령의 응답이 없습니다.'));
         }
         try {
-            payload.encoding = 'UTF-8';
-            if (!payload.open('w')) throw new Error('임시 데이터를 쓸 수 없습니다: ' + payload.error);
-            var written = payload.write(encoded), closed = payload.close();
-            if (!written || !closed) throw new Error('임시 데이터 쓰기에 실패했습니다.');
-            if (!payload.open('r')) throw new Error('임시 데이터를 다시 읽을 수 없습니다.');
-            var actual = payload.read(); payload.close();
-            if (actual !== encoded) throw new Error('임시 데이터가 원본과 다릅니다. 복사를 중단했습니다.');
+            writeChecked(payload, encoded);
             if (progress) progress(1, 3);
             request('COPY');
             if (progress) progress(2, 3);
             request('VERIFY');
             if (progress) progress(3, 3);
         } finally {
-            try { payload.close(); } catch (ignored) {}
-            try { if (payload.exists) payload.remove(); } catch (ignored2) {}
+            for (var i = 0; i < temporaryFiles.length; i++) {
+                try { temporaryFiles[i].close(); } catch (ignored) {}
+                try { if (temporaryFiles[i].exists) temporaryFiles[i].remove(); } catch (ignored2) {}
+            }
         }
     }
     function run() {
