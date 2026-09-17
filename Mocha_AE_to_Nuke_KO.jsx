@@ -2,7 +2,6 @@
    Uses public AE keyframes; no Mocha binaries are modified.
    Library mode for tests: set $.global.MOCHA_NUKE_LIBRARY_ONLY = true. */
 var MochaNukeBridge = (function () {
-    var bridgeScriptPath = $.fileName || '';
     function number(v) {
         if (typeof v !== 'number' || !isFinite(v)) throw new Error('Invalid numeric tracking value.');
         return String(Math.round(v * 1000000) / 1000000);
@@ -174,13 +173,10 @@ var MochaNukeBridge = (function () {
         }
         return result;
     }
-    function helperCommand(helperPath, args) {
-        return '"' + helperPath + '" ' + args.join(' ');
-    }
     function clipboardPermissionMessage() {
         try {
             if (app.preferences.getPrefAsLong('Main Pref Section v2', 'Pref_SCRIPTING_FILE_NETWORK_SECURITY') === 0)
-                return 'AE가 복사 프로그램 실행을 차단하고 있습니다.\n이 창을 닫고 편집 > 환경 설정 > 스크립팅 및 표현식에서\n[스크립트를 통한 파일 쓰기 및 네트워크 액세스 허용]을 켠 뒤 다시 실행하세요.';
+                return 'AE에서 클립보드 복사에 필요한 스크립팅 권한이 꺼져 있습니다.\n이 창을 닫고 편집 > 환경 설정 > 스크립팅 및 표현식에서\n[스크립트를 통한 파일 쓰기 및 네트워크 액세스 허용]을 켠 뒤 다시 실행하세요.';
         } catch (ignored) {}
         return '';
     }
@@ -189,26 +185,53 @@ var MochaNukeBridge = (function () {
         if (permissionMessage) throw new Error(permissionMessage);
         if (typeof text !== 'string' || text.length < 20 || text.indexOf('# Mocha AE') !== 0)
             throw new Error('복사할 트래킹 데이터가 비어 있거나 올바르지 않습니다.');
-        var helper = new File(new File(bridgeScriptPath).parent.fsName + '/MochaClipboard.exe');
-        if (!helper.exists) throw new Error('MochaClipboard.exe가 없습니다. JSX와 같은 폴더에 있어야 합니다.');
+        var powershell = new File($.getenv('SystemRoot') + '/System32/WindowsPowerShell/v1.0/powershell.exe');
+        if (!powershell.exists) throw new Error('Windows PowerShell을 찾을 수 없습니다. Windows에서 실행하세요.');
         var token = new Date().getTime() + '_' + Math.floor(Math.random() * 1000000000);
-        function request(args, expected) {
-            var reply = system.callSystem(helperCommand(helper.fsName, args));
+        var payload = new File(Folder.temp.fsName + '/MochaNuke_' + token + '.txt');
+        if (payload.exists) throw new Error('임시 파일 이름이 겹쳤습니다. 다시 복사하세요.');
+        var encoded = encodeUTF16(text), bytes = text.length * 2;
+        function psString(value) { return "'" + String(value).replace(/'/g, "''") + "'"; }
+        function request(stage) {
+            var expected = 'MOCHA_' + stage + ':' + token + ':' + bytes;
+            // Base64 keeps the payload independent of AE's text encoding and newline conversion.
+            // Validate the original byte count before touching the clipboard. Use a fresh process for VERIFY.
+            var code = "$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'; try {" +
+                '$encoded=[IO.File]::ReadAllText(' + psString(payload.fsName) + ');' +
+                'if($encoded.Length -ne ' + encoded.length + "){throw 'Encoded data length mismatch.'};" +
+                '$bytes=[Convert]::FromBase64String($encoded);' +
+                'if($bytes.Length -ne ' + bytes + " -or $bytes.Length -eq 0){throw 'Tracking data length mismatch.'};" +
+                '$value=[Text.Encoding]::Unicode.GetString($bytes);' +
+                "if(-not $value.StartsWith('# Mocha AE') -or $value.IndexOf([char]0) -ge 0){throw 'Invalid tracking data.'};" +
+                'Add-Type -AssemblyName System.Windows.Forms;' +
+                (stage === 'COPY' ? '[System.Windows.Forms.Clipboard]::SetDataObject($value,$true,20,50);' : '') +
+                '$matched=$false; for($i=0;$i -lt 20;$i++) {' +
+                'try {$got=[System.Windows.Forms.Clipboard]::GetText();' +
+                'if([String]::Equals($got,$value,[StringComparison]::Ordinal)){$matched=$true;break}} catch {};' +
+                'Start-Sleep -Milliseconds 50};' +
+                "if(-not $matched){throw 'Clipboard content does not match tracking data.'};" +
+                '[Console]::WriteLine(' + psString(expected) + ');' +
+                "} catch {[Console]::WriteLine('ERROR: '+$_.Exception.Message);exit 1}";
+            var reply = system.callSystem('"' + powershell.fsName + '" -NoLogo -NoProfile -NonInteractive -STA -WindowStyle Hidden -EncodedCommand ' + encodeUTF16(code));
             reply = String(reply).replace(/^\s+|\s+$/g, '');
-            if (reply !== expected) throw new Error('클립보드 ' + args[0] + ': ' + (reply || '복사 프로그램의 응답이 없습니다.'));
+            if (reply !== expected) throw new Error('클립보드 ' + stage + ': ' + (reply || 'Windows 복사 명령의 응답이 없습니다.'));
         }
         try {
-            request(['begin', token], 'READY');
-            for (var start = 0; start < text.length; start += 1600) {
-                var chunk = text.substring(start, Math.min(start + 1600, text.length));
-                request(['append', token, String(start * 2), encodeUTF16(chunk)], 'APPENDED:' + ((start + chunk.length) * 2));
-                if (progress) progress(Math.min(start + chunk.length, text.length), text.length);
-            }
-            var bytes = String(text.length * 2);
-            request(['copy', token, bytes], 'COPIED:' + bytes);
-            request(['verify', token, bytes], 'VERIFIED:' + bytes);
+            payload.encoding = 'UTF-8';
+            if (!payload.open('w')) throw new Error('임시 데이터를 쓸 수 없습니다: ' + payload.error);
+            var written = payload.write(encoded), closed = payload.close();
+            if (!written || !closed) throw new Error('임시 데이터 쓰기에 실패했습니다.');
+            if (!payload.open('r')) throw new Error('임시 데이터를 다시 읽을 수 없습니다.');
+            var actual = payload.read(); payload.close();
+            if (actual !== encoded) throw new Error('임시 데이터가 원본과 다릅니다. 복사를 중단했습니다.');
+            if (progress) progress(1, 3);
+            request('COPY');
+            if (progress) progress(2, 3);
+            request('VERIFY');
+            if (progress) progress(3, 3);
         } finally {
-            try { system.callSystem(helperCommand(helper.fsName, ['cleanup', token])); } catch (ignored) {}
+            try { payload.close(); } catch (ignored) {}
+            try { if (payload.exists) payload.remove(); } catch (ignored2) {}
         }
     }
     function run() {
@@ -308,7 +331,7 @@ var MochaNukeBridge = (function () {
         } catch (e) { alert('Mocha → Nuke\n' + e.toString()); }
     }
     return {run: run, collect: collect, makeNK: makeNK, sample: sample, transformPoint: transformPoint,
-        findPins: findPins, helperCommand: helperCommand, encodeUTF16: encodeUTF16, copyClipboard: copyClipboard,
+        findPins: findPins, encodeUTF16: encodeUTF16, copyClipboard: copyClipboard,
         relativeTransforms: relativeTransforms};
 }());
 if (!$.global.MOCHA_NUKE_LIBRARY_ONLY) MochaNukeBridge.run();

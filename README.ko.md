@@ -24,7 +24,7 @@ AE에 적용한 Mocha 트래킹을 **CornerPin2D** 또는 **Transform**으로 �
 
 ## 빠른 시작
 
-1. **ZIP을 내려받아 압축을 풉니다.** `MochaClipboard.exe`는 JSX 스크립트와 같은 폴더에 두세요.
+1. **ZIP을 내려받아 압축을 풉니다.** 한국어 또는 영어 JSX 스크립트를 선택하세요. 별도 실행 파일은 필요하지 않습니다.
 2. AE **환경 설정 → 스크립팅 및 표현식 → 스크립트를 통한 파일 쓰기 및 네트워크 액세스 허용**을 켭니다.
 3. Mocha AE에서 트래킹을 저장하고 AE로 돌아옵니다. **Create Track Data**에서 추적한 레이어를 선택한 뒤, **Corner Pin** 또는 **Transform**으로 **Apply Export**합니다.
 4. 키프레임을 받은 레이어를 선택합니다. **파일 → 스크립트 → 스크립트 파일 실행…**에서 [`Mocha_AE_to_Nuke_KO.jsx`](Mocha_AE_to_Nuke_KO.jsx)를 실행합니다.
@@ -48,16 +48,14 @@ AE에 적용한 Mocha 트래킹을 **CornerPin2D** 또는 **Transform**으로 �
 | --- | --- |
 | [`Mocha_AE_to_Nuke_EN.jsx`](Mocha_AE_to_Nuke_EN.jsx) | 영어 인터페이스 |
 | [`Mocha_AE_to_Nuke_KO.jsx`](Mocha_AE_to_Nuke_KO.jsx) | 한국어 인터페이스 |
-| [`MochaClipboard.exe`](MochaClipboard.exe) | 실행에 필요: Windows 클립보드에 노드 텍스트를 복사하고 확인 |
-| [`MochaClipboard.cs`](MochaClipboard.cs) | 도우미의 C# 소스 코드. 실행할 때는 없어도 됩니다. |
 
 <details>
 <summary><strong>지원 범위 및 문제 해결</strong></summary>
 
 - 부모가 없는 2D 레이어, 표준 Corner Pin, 레이어 Transform을 지원합니다. CC Power Pin, 모션블러용 Corner Pin, 3D, 로토 내보내기는 지원하지 않습니다.
 - 정수 프레임마다 샘플링하며 프레임 사이는 선형 보간합니다. AE의 서브프레임 움직임과 모션블러 렌더를 그대로 재현하지는 않습니다.
-- 복사에 실패하면 팝업의 오류 문구, AE 스크립팅 권한, `MochaClipboard.exe`의 위치를 확인하세요.
-- 도우미는 Windows 클립보드에 텍스트를 복사하고 확인합니다. 설치와 외부 통신 없이 동작합니다.
-- 캡처는 임시 샘플 레이어로 실행한 실제 AE 팝업입니다. 수치 테스트를 통과했으며 실제 Nuke 렌더까지 검증한 상태는 아닙니다.
+- 클립보드 복사는 Windows 기본 PowerShell과 임시 텍스트 파일을 사용합니다. 위의 AE 스크립팅 권한을 켜세요. 임시 데이터는 복사 전에 확인하고 처리 후 삭제하며, 별도 프로세스가 복사 내용을 다시 확인합니다. 설치와 외부 통신은 없습니다.
+- 복사에 실패하면 팝업의 오류 문구를 확인하세요. 파일 접근 오류, 빈 데이터, 검증 실패는 복사 완료로 표시하지 않습니다.
+- 캡처는 샘플 레이어로 실행한 실제 AE 팝업입니다. 모의 클립보드 환경에서 수치 계산과 PowerShell 전달 검증을 통과했습니다. 실제 AE에서 Nuke 붙여넣기와 렌더까지의 전체 과정은 검증하지 못했습니다.
 
 </details>

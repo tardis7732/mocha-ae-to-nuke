@@ -24,7 +24,7 @@ Export Mocha tracking applied in AE as **CornerPin2D** or **Transform**. Referen
 
 ## Quick start
 
-1. **Download and extract** the ZIP. Keep `MochaClipboard.exe` in the same folder as the JSX scripts.
+1. **Download and extract** the ZIP. Choose the English or Korean JSX script. No additional executable is required.
 2. In AE, enable **Preferences → Scripting & Expressions → Allow Scripts to Write Files and Access Network**.
 3. Track in Mocha AE, save, and return to AE. Use **Create Track Data**, select the tracked layer, then **Apply Export** with **Corner Pin** or **Transform**.
 4. Select the layer receiving the keyframes. Open **File → Scripts → Run Script File…** and run [`Mocha_AE_to_Nuke_EN.jsx`](Mocha_AE_to_Nuke_EN.jsx).
@@ -48,16 +48,14 @@ Check the reference frame before copying. Match the Nuke input resolution and pi
 | --- | --- |
 | [`Mocha_AE_to_Nuke_EN.jsx`](Mocha_AE_to_Nuke_EN.jsx) | English interface |
 | [`Mocha_AE_to_Nuke_KO.jsx`](Mocha_AE_to_Nuke_KO.jsx) | Korean interface |
-| [`MochaClipboard.exe`](MochaClipboard.exe) | Required: copies and verifies node text in the Windows clipboard |
-| [`MochaClipboard.cs`](MochaClipboard.cs) | C# source for the helper; not needed to run the script |
 
 <details>
 <summary><strong>Compatibility and troubleshooting</strong></summary>
 
 - Supports unparented 2D layers, standard Corner Pin and layer transforms. CC Power Pin, motion-blur Corner Pin, 3D and roto export are not supported.
 - Keys are sampled at integer frames with linear interpolation. AE subframe motion and motion-blur rendering are not reproduced.
-- If copying fails, check the message in the dialog, the AE scripting permission and the location of `MochaClipboard.exe`.
-- The helper copies and verifies text through the Windows clipboard. It requires no installer and makes no network requests.
-- Screenshots show the actual AE dialog with a temporary sample layer. Numerical tests passed; end-to-end Nuke rendering has not been verified.
+- Clipboard copying uses Windows PowerShell and a temporary text file. Enable the AE scripting permission above. Temporary data is checked before copying and removed afterward; a second process verifies the copied text. No installer or network requests.
+- If copying fails, check the message in the dialog. File access errors, empty data and verification failures are reported instead of success.
+- Screenshots show the actual AE dialog with a sample layer. Numerical and PowerShell transport tests passed with a mock clipboard. The complete AE-to-Nuke paste and render workflow has not been verified.
 
 </details>
